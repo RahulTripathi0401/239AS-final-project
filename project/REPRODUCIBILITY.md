@@ -20,11 +20,10 @@ The experiments were run locally on macOS using Python through `uv`. Run all com
 Install runtime dependencies into a local `uv` environment:
 
 ```bash
-uv venv
-uv pip install -r requirements.txt
+uv sync
 ```
 
-The rule harness uses only the Python standard library plus scikit-learn for the stratified split in `evaluate_split.py`. The LLM-guided agent loop additionally uses the OpenAI Python SDK when run with `--planner openai`. The reproduced machine-learning baseline uses Pandas, NumPy, SciPy, scikit-learn, Matplotlib, Seaborn, and Joblib. The exact package versions from the checked run are recorded in `requirements.txt`.
+The rule harness uses only the Python standard library plus scikit-learn for the stratified split in `evaluate_split.py`. The LLM-guided agent loop additionally uses the OpenAI Python SDK when run with `--planner openai`. The reproduced machine-learning baseline uses Pandas, NumPy, SciPy, scikit-learn, Matplotlib, Seaborn, and Joblib. Direct dependencies are listed in `pyproject.toml`, and the full resolved environment is recorded in `uv.lock`.
 
 ## Reproduce Rule-Harness Results
 

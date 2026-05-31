@@ -16,8 +16,7 @@ This repository contains the final paper draft, presentation materials, CSIC 201
 ## Quick Reproduction
 
 ```bash
-uv venv
-uv pip install -r requirements.txt
+uv sync
 uv run python project/regex_rules/evaluate_split.py
 uv run python project/regex_rules/agent_rule_harness.py --planner replay
 uv run python project/kaggle_kernel/run_notebook25d16fa6ba_local.py
