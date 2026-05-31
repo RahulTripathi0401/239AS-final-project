@@ -1,0 +1,584 @@
+\documentclass[aspectratio=169]{beamer}
+
+% --- UNIVERSAL PREAMBLE BLOCK ---
+\usepackage{fontspec}
+\usepackage[english, bidi=basic, provide=*]{babel}
+
+\babelfont{sf}{Noto Sans}
+\babelfont{rm}{Noto Serif}
+% --------------------------------
+
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, calc, fit, backgrounds}
+\usepackage{booktabs}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% Theme configuration
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+% Speaker notes are written in \note{...} blocks for every slide.
+% Change this to \setbeameroption{show notes on second screen=right}
+% when building a presenter-notes version.
+\setbeameroption{hide notes}
+\setbeamercovered{transparent}
+
+\title[LLM-Guided Rules]{LLM-Guided Rule Discovery for Web Attack Detection}
+\author{Rahul Tripathi \and Armaan Oberai \and Justine Ellery}
+\date{}
+
+\begin{document}
+
+% --- Title Page ---
+\begin{frame}
+    \titlepage
+\note{
+Timing: 15 seconds.
+
+Open by saying this project asks whether an LLM can help write useful web-attack detection rules without being used as the detector. The key distinction is that the LLM proposes rules offline, but the final runtime detector is just deterministic regexes and endpoint heuristics.
+}
+\end{frame}
+
+% --- Slide 1 ---
+\begin{frame}{This attack does not look like a classic injection}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.55cm, thick, >=Stealth]
+        \node[draw, rounded corners, fill=gray!10, text width=0.86\textwidth, inner sep=8pt, align=left] (req) {
+            \texttt{/tienda1/publico/anadir.jsp?id=2\&precio=39a\&cantidad=1}
+        };
+        \node<2->[draw, rounded corners, fill=red!10, below=of req, text width=0.76\textwidth, inner sep=7pt, align=center] (miss) {
+            No script tag. No obvious SQL keyword. No path traversal.
+        };
+        \node<3->[draw, rounded corners, fill=green!12, below=of miss, text width=0.76\textwidth, inner sep=7pt, align=center] (grammar) {
+            But \texttt{precio} should be numeric.
+        };
+        \node<4->[draw, rounded corners, fill=blue!10, below=of grammar, text width=0.76\textwidth, inner sep=7pt, align=center] (question) {
+            Can an LLM help discover this kind of rule automatically?
+        };
+        \draw<3->[->] (miss) -- (grammar);
+        \draw<4->[->] (grammar) -- (question);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<2-> Many attacks are structural, not just keyword matches.
+        \item<3-> Endpoint-specific rules can catch what generic signatures miss.
+        \item<4-> The LLM proposes rules offline; the detector stays deterministic.
+    \end{itemize}
+\note{
+Timing: 55 seconds.
+
+Start with the example request. Ask the audience what looks suspicious. Then reveal that the issue is not a classic injection token, but an endpoint invariant: price should be numeric. This sets up the whole project.
+}
+\end{frame}
+
+% --- Slide 2 ---
+\begin{frame}{Accurate detectors are not always deployable rules}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.8cm, auto, thick, >=Stealth]
+        \node[draw, rectangle, rounded corners, fill=blue!10, minimum width=3.3cm, minimum height=0.65cm] (req) {HTTP Request};
+        \node<2->[draw, rectangle, rounded corners, fill=orange!15, minimum width=4.1cm, minimum height=0.65cm, below left=0.8cm and -0.2cm of req] (ml) {Machine-learning model};
+        \node<3->[draw, rectangle, rounded corners, fill=green!15, minimum width=4.1cm, minimum height=0.65cm, below right=0.8cm and -0.2cm of req] (rules) {Firewall / WAF rules};
+        \node<2->[draw, rectangle, rounded corners, fill=gray!10, minimum width=3.8cm, minimum height=0.65cm, below=0.8cm of ml] (artifact) {Model artifact};
+        \node<3->[draw, rectangle, rounded corners, fill=gray!10, minimum width=3.8cm, minimum height=0.65cm, below=0.8cm of rules] (logic) {Inspectable logic};
+
+        \draw<2->[->] (req) -- (ml);
+        \draw<3->[->] (req) -- (rules);
+        \draw<2->[->] (ml) -- (artifact);
+        \draw<3->[->] (rules) -- (logic);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<1-> Web attacks often leave visible evidence in URL, body, and parameters.
+        \item<2-> Machine-learning baselines can classify this traffic accurately.
+        \item<3-> But many defenses need rules that are fast, auditable, and easy to revise.
+        \item<4-> \textbf{Question:} can an LLM help discover those rules without running at inference time?
+    \end{itemize}
+\note{
+Timing: 45 seconds.
+
+Now generalize from the hook. A classifier can be accurate, but operators often want concrete detection logic they can inspect and place into a rule-based enforcement pipeline.
+}
+\end{frame}
+
+% --- Slide 3 ---
+\section{Prior Work}
+\begin{frame}{Before LLMs, web attack detection split between rules and models}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.7cm and 0.75cm, thick, >=Stealth]
+        \node<1->[draw, rounded corners, fill=green!12, minimum width=3.9cm, minimum height=0.82cm, align=center] (rules) {Rule-based systems\\WAF / IDS signatures};
+        \node<2->[draw, rounded corners, fill=orange!15, right=of rules, minimum width=3.9cm, minimum height=0.82cm, align=center] (stats) {Statistical and ML\\request classifiers};
+        \node<3->[draw, rounded corners, fill=gray!10, below=0.65cm of rules, minimum width=3.9cm, minimum height=0.78cm, align=center] (audit) {Fast and inspectable\\but manually written};
+        \node<4->[draw, rounded corners, fill=gray!10, below=0.65cm of stats, minimum width=3.9cm, minimum height=0.78cm, align=center] (perf) {Accurate on benchmarks\\but less transparent};
+
+        \draw<3->[->] (rules) -- (audit);
+        \draw<4->[->] (stats) -- (perf);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.2cm}
+    \begin{itemize}
+        \item<1-> Signature systems such as Snort, Suricata, and WAFs make detection logic deployable.
+        \item<2-> CSIC 2010 also became a benchmark for TF-IDF, tree models, statistical models, and deep learning.
+        \item<5-> The tradeoff is familiar: rules are operationally simple, while learned models often hide the reason for a decision.
+    \end{itemize}
+\note{
+Timing: 45 seconds.
+
+Keep this high level. The point is not to survey every paper. Before LLMs, there were two main tracks: hand-built rules that operators could deploy, and statistical or ML models that often performed well but were harder to inspect or translate into firewall logic.
+}
+\end{frame}
+
+% --- Slide 4 ---
+\begin{frame}{LLMs changed rule generation, but often target heavy rule languages}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.58cm and 0.7cm, thick, >=Stealth]
+        \node<1->[draw, rounded corners, fill=blue!10, minimum width=3.2cm, minimum height=0.75cm, align=center] (llm) {LLM};
+        \node<2->[draw, rounded corners, fill=gray!10, below left=0.7cm and -0.05cm of llm, minimum width=3.0cm, minimum height=0.72cm, align=center] (traffic) {Packets, CTI,\\natural language};
+        \node<3->[draw, rounded corners, fill=gray!10, below right=0.7cm and -0.05cm of llm, minimum width=3.0cm, minimum height=0.72cm, align=center] (rules) {Suricata, WAF,\\KQL rules};
+        \node<4->[draw, rounded corners, fill=red!8, below=0.45cm of traffic.south east, xshift=1.45cm, minimum width=6.7cm, minimum height=0.78cm, align=center] (issue) {Powerful, but tied to production grammars and rule-lifecycle problems};
+
+        \draw<2->[->] (traffic) -- (llm);
+        \draw<3->[->] (llm) -- (rules);
+        \draw<4->[->] (rules.south) -- (issue.north);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.2cm}
+    \begin{itemize}
+        \item<2-> Recent systems use LLMs to generate IDS, WAF, or EDR detection rules.
+        \item<3-> These systems show that LLMs can help translate security context into detection logic.
+        \item<4-> They also inherit complex rule grammars, validation needs, latency concerns, and growing rule sets.
+    \end{itemize}
+\note{
+Timing: 45 seconds.
+
+This slide should bridge into our contribution. LLM rule-generation work is very relevant, but much of it asks the LLM to produce rules for Suricata, ModSecurity, KQL, or similar systems. Those languages are useful, but they bring their own syntax, lifecycle, and validation complexity.
+}
+\end{frame}
+
+% --- Slide 5 ---
+\begin{frame}{Our project studies a smaller, controlled form of rule discovery}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.42cm, thick]
+        \node<1->[draw, rounded corners, fill=blue!10, minimum width=7.6cm, minimum height=0.72cm, align=center] (a) {LLM proposes simple regexes and endpoint heuristics};
+        \node<2->[draw, rounded corners, fill=green!12, below=of a, minimum width=7.6cm, minimum height=0.72cm, align=center] (b) {Harness accepts rules only when dev metrics improve};
+        \node<3->[draw, rounded corners, fill=orange!12, below=of b, minimum width=7.6cm, minimum height=0.72cm, align=center] (c) {Frozen detector is deterministic Python logic};
+        \node<4->[draw, rounded corners, fill=gray!10, below=of c, minimum width=7.6cm, minimum height=0.72cm, align=center] (d) {Final comparison uses the same held-out 80/20 test split as the ML baseline};
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.2cm}
+    \begin{itemize}
+        \item<1-> We do not use the LLM as the runtime detector.
+        \item<3-> We do not require a production IDS grammar to study the core idea.
+        \item<4-> The question is narrower: can auditable rules recover much of the performance of learned models on CSIC 2010?
+    \end{itemize}
+\note{
+Timing: 50 seconds.
+
+This is the positioning slide. Our project is intentionally smaller than production rule-generation systems. That is the point: isolate the discovery loop, keep the output simple, and compare it fairly to a traditional machine-learning baseline.
+}
+\end{frame}
+
+% --- Slide 6 ---
+\begin{frame}{CSIC 2010 web-application requests}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.5cm, thick]
+        \node<1->[draw, rounded corners, fill=blue!10, minimum width=3.4cm, minimum height=1.0cm, align=center] (total) {\Large 61{,}065\\ \normalsize requests};
+        \node<2->[draw, rounded corners, fill=green!12, below left=0.75cm and 0.25cm of total, minimum width=3.0cm, minimum height=0.9cm, align=center] (normal) {\Large 36{,}000\\ \normalsize normal};
+        \node<2->[draw, rounded corners, fill=red!10, below right=0.75cm and 0.25cm of total, minimum width=3.0cm, minimum height=0.9cm, align=center] (attack) {\Large 25{,}065\\ \normalsize anomalous};
+        \node<3->[draw, rounded corners, fill=gray!10, below=0.55cm of normal.south east, xshift=1.55cm, minimum width=7.2cm, minimum height=0.72cm, align=center] (app) {Synthetic e-commerce app: repeated paths, forms, and parameters};
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<3-> Attacks include SQL injection, XSS, CRLF injection, traversal, and malformed requests.
+        \item<4-> We use a stratified 80/20 split with seed 42.
+    \end{itemize}
+\note{
+Timing: 40 seconds.
+
+Introduce CSIC 2010 as the benchmark. It is useful because it contains labeled normal and anomalous HTTP requests from a small web application. Mention that the dataset is structured, which is both helpful and a limitation. The reported results use an 80/20 split.
+}
+\end{frame}
+
+% --- Slide 4 ---
+\begin{frame}{Use the LLM offline, not in the detector}
+    \begin{center}
+    \begin{tikzpicture}[
+        node distance=0.65cm and 0.7cm,
+        thick,
+        >=Stealth,
+        box/.style={draw, rounded corners, align=center, minimum width=2.7cm, minimum height=0.72cm},
+        data/.style={box, fill=gray!10},
+        llm/.style={box, fill=blue!10},
+        eval/.style={box, fill=green!12},
+        outputbox/.style={box, fill=orange!12}
+    ]
+        \node<1->[data] (examples) {Train examples\\+ error summaries};
+        \node<2->[llm, right=of examples] (proposal) {LLM proposes\\candidate rules};
+        \node<3->[eval, right=of proposal] (eval) {Deterministic\\evaluation};
+        \node<4->[eval, below=of eval] (accept) {Accept / reject\\by metrics};
+        \node<5->[outputbox, left=of accept] (frozen) {Frozen\\rule set};
+        \node<6->[outputbox, left=of frozen] (test) {Held-out test\\+ runtime};
+
+        \draw<2->[->] (examples) -- (proposal);
+        \draw<3->[->] (proposal) -- (eval);
+        \draw<4->[->] (eval) -- (accept);
+        \draw<5->[->] (accept) -- (frozen);
+        \draw<6->[->] (frozen) -- (test);
+        \draw<7->[->, dashed] (accept.south) -- ++(0,-0.45) -| node[pos=0.25, below] {new errors} (examples.south);
+
+        \begin{scope}[on background layer]
+        \node<7->[draw, dashed, rounded corners, fit=(examples)(proposal)(eval)(accept), inner sep=8pt] {};
+        \end{scope}
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<2-> The LLM proposes regexes and endpoint heuristics.
+        \item<3-> Python executes the candidate rules and measures precision, recall, and F1.
+        \item<5-> The final detector contains no LLM calls.
+    \end{itemize}
+\note{
+Timing: 55 seconds.
+
+This is the central slide. Walk through the loop: examples and errors go to the LLM, the LLM proposes candidates, the harness evaluates them, and only useful rules survive. The final output is frozen rules, not a prompt or a model. That is what makes runtime cheap and auditable.
+}
+\end{frame}
+
+% --- Slide 5 ---
+\begin{frame}{Rule examples: combine attack syntax with endpoint structure}
+    \begin{columns}
+        \begin{column}{0.48\textwidth}
+            \visible<1->{
+            \begin{block}{Generic regex rules}
+            \begin{itemize}
+                \item SQL comment markers and keyword clusters
+                \item Script tags and encoded script fragments
+                \item Path traversal strings
+                \item Null bytes and suspicious file probes
+            \end{itemize}
+            \end{block}
+            }
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \visible<2->{
+            \begin{block}{Endpoint heuristics}
+            \begin{itemize}
+                \item Numeric fields must stay numeric
+                \item Known forms should not gain new fields
+                \item Stable button values should not mutate
+                \item Contact and identity fields have constrained formats
+            \end{itemize}
+            \end{block}
+            }
+        \end{column}
+    \end{columns}
+    \vspace{0.45cm}
+    \begin{center}
+        \visible<3->{\textit{The biggest gains came after the harness learned application invariants, not just attack strings.}}
+    \end{center}
+\note{
+Timing: 50 seconds.
+
+Explain that the early rules were obvious signatures, like SQL and XSS. Those had high precision but missed many attacks. The larger improvement came from endpoint-specific checks: values that should be numeric, fields that should not appear on a form, or parameters that should follow a narrow format. This is why the LLM loop is useful: it helps suggest where local invariants exist.
+}
+\end{frame}
+
+% --- Slide 6 ---
+\begin{frame}{Example: A numeric-field invariant catches subtle mutations}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.5cm, thick, >=Stealth,
+        box/.style={draw, rounded corners, align=left, text width=0.82\textwidth, inner sep=5pt}]
+        \node<1->[box, fill=gray!10] (err) {\textbf{Missed attack example}\\
+        \texttt{/tienda1/publico/anadir.jsp?id=2\&precio=39a\&cantidad=1}};
+        \node<2->[box, fill=blue!10, below=of err] (idea) {\textbf{LLM hypothesis}\\
+        Some endpoint fields should be numeric after URL decoding.};
+        \node<3->[box, fill=green!12, below=of idea] (rule) {\textbf{Accepted rule}\\
+        If \texttt{id}, \texttt{precio}, or \texttt{cantidad} contains a non-numeric value, flag the request.};
+        \draw<2->[->] (err) -- (idea);
+        \draw<3->[->] (idea) -- (rule);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<1-> The request does not need a classic SQL or XSS token.
+        \item<3-> It is anomalous because it violates the endpoint's expected parameter grammar.
+    \end{itemize}
+\note{
+Timing: 50 seconds.
+
+Use this as a concrete example of the method. A generic attack regex might miss this because it does not contain an obvious injection token. But the endpoint has a local grammar: price and quantity should look numeric. The LLM proposes that invariant, and the harness decides whether it improves metrics.
+}
+\end{frame}
+
+% --- Slide 7 ---
+\begin{frame}{Accuracy improves across rule-discovery rounds}
+    \begin{center}
+    \begin{tikzpicture}
+    \begin{axis}[
+        width=0.82\textwidth,
+        height=0.48\textheight,
+        ymin=0.55,
+        ymax=1.0,
+        xmin=1,
+        xmax=8,
+        ylabel={Accuracy},
+        xlabel={Rule-discovery round},
+        xtick={1,2,3,4,5,6,7,8},
+        xticklabels={R1,R2,R5,R6,R9,R10,R11,R12},
+        ytick={0.6,0.7,0.8,0.9,1.0},
+        grid=both,
+        grid style={gray!20},
+        every axis plot/.append style={thick, mark=*}
+    ]
+    \only<1->{\addplot[gray!60, thick, mark=*] coordinates {(1,0.6113) (2,0.6719)};}
+    \only<2->{\addplot[blue, thick, mark=*] coordinates {(2,0.6719) (3,0.7273) (4,0.8375)};}
+    \only<3->{\addplot[orange, thick, mark=*] coordinates {(4,0.8375) (5,0.9333) (6,0.9627)};}
+    \only<4->{\addplot[green!60!black, thick, mark=*] coordinates {(6,0.9627) (7,0.9761) (8,0.9921)};}
+    \end{axis}
+    \end{tikzpicture}
+    \end{center}
+    \begin{itemize}
+        \item<1-> Seed signatures found obvious attacks but had low recall.
+        \item<2-> Endpoint schemas produced the first large jump.
+        \item<3-> Encoded payloads and value checks closed much of the gap.
+        \item<4-> Final identity/contact heuristics reached 99.21\% test accuracy.
+    \end{itemize}
+\note{
+Timing: 50 seconds.
+
+Walk through the curve. The first round catches obvious strings, but accuracy is low because many attacks are structural. As the loop adds endpoint schemas and value constraints, performance climbs. The final rule set reaches 99.21 percent test accuracy.
+}
+\end{frame}
+
+% --- Slide 8 ---
+\begin{frame}{The frozen rule set reaches 99.21\% held-out accuracy}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.45cm and 0.55cm, thick]
+        \node<1->[draw, rounded corners, fill=blue!10, minimum width=3.1cm, minimum height=1.0cm, align=center] (acc) {\Large 99.21\%\\ \normalsize accuracy};
+        \node<2->[draw, rounded corners, fill=green!12, right=of acc, minimum width=3.1cm, minimum height=1.0cm, align=center] (prec) {\Large 99.92\%\\ \normalsize precision};
+        \node<3->[draw, rounded corners, fill=orange!12, below=of acc, minimum width=3.1cm, minimum height=1.0cm, align=center] (rec) {\Large 98.16\%\\ \normalsize recall};
+        \node<4->[draw, rounded corners, fill=gray!10, right=of rec, minimum width=3.1cm, minimum height=1.0cm, align=center] (f1) {\Large 0.9903\\ \normalsize F1};
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.35cm}
+    \begin{itemize}
+        \item<1-> Evaluation uses the held-out 20\% test split.
+        \item<2-> High precision means the final rule set rarely flags benign requests.
+        \item<4-> The remaining errors are mostly missed attacks, not false alarms.
+    \end{itemize}
+\note{
+Timing: 45 seconds.
+
+This slide gives the result before the detailed comparison. Keep it simple: the rule set is accurate, precise, and evaluated on the held-out split. The next section will compare this directly against the reproduced random-forest baseline.
+}
+\end{frame}
+
+% --- Slide 9 ---
+\section{Comparison to Traditional ML}
+\begin{frame}{The baseline is a reproduced random-forest classifier}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.55cm, thick, >=Stealth]
+        \node<1->[draw, rounded corners, fill=orange!12, minimum width=5.6cm, minimum height=0.76cm, align=center] (baseline) {Traditional ML baseline};
+        \node<2->[draw, rounded corners, fill=gray!10, below=of baseline, minimum width=5.6cm, minimum height=0.76cm, align=center] (features) {18 numeric features + character TF-IDF};
+        \node<3->[draw, rounded corners, fill=gray!10, below=of features, minimum width=5.6cm, minimum height=0.76cm, align=center] (model) {Random forest classifier};
+        \node<4->[draw, rounded corners, fill=green!12, below=of model, minimum width=5.6cm, minimum height=0.76cm, align=center] (split) {Same stratified 80/20 split};
+        \draw<2->[->] (baseline) -- (features);
+        \draw<3->[->] (features) -- (model);
+        \draw<4->[->] (model) -- (split);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.25cm}
+    \begin{itemize}
+        \item<1-> We reproduced the public CSIC 2010 machine-learning baseline locally.
+        \item<2-> The baseline featurizes URL, body, method, and request-length properties.
+        \item<4-> The rule harness and ML baseline are reported on the same held-out test split.
+    \end{itemize}
+\note{
+Timing: 40 seconds.
+
+Set up the comparison before showing numbers. The baseline is not a strawman: it uses character TF-IDF over request text plus numeric features and trains a random forest. Emphasize that both systems are evaluated on the same 20 percent test split.
+}
+\end{frame}
+
+% --- Slide 10 ---
+\begin{frame}{Traditional ML vs. LLM-guided rules: held-out accuracy and F1}
+    \begin{center}
+    \begin{tikzpicture}
+    \begin{axis}[
+        ybar,
+        bar width=13pt,
+        width=0.86\textwidth,
+        height=0.52\textheight,
+        ymin=0.94,
+        ymax=1.0,
+        ylabel={Score},
+        symbolic x coords={Accuracy,F1},
+        xtick=data,
+        ytick={0.94,0.96,0.98,1.00},
+        legend style={at={(0.5,-0.18)}, anchor=north, legend columns=2},
+        nodes near coords,
+        nodes near coords align={vertical},
+        every node near coord/.append style={font=\scriptsize},
+        grid=major,
+        grid style={gray!20}
+    ]
+    \only<1->{\addplot[fill=orange!35, draw=orange!80!black] coordinates {(Accuracy,0.9763) (F1,0.9712)};}
+    \only<2->{\addplot[fill=green!35, draw=green!50!black] coordinates {(Accuracy,0.9921) (F1,0.9903)};}
+    \legend{Random forest,Rule harness}
+    \end{axis}
+    \end{tikzpicture}
+    \end{center}
+    \begin{itemize}
+        \item<1-> The reproduced random forest reaches 97.63\% accuracy and 0.9712 F1.
+        \item<2-> The frozen rule set reaches 99.21\% accuracy and 0.9903 F1.
+        \item<3-> The takeaway is bounded: on this structured benchmark, compact rules match or exceed a strong text-based classifier.
+    \end{itemize}
+\note{
+Timing: 55 seconds.
+
+This slide should feel like the main comparison figure. First show the reproduced ML baseline, then reveal the rule harness. Keep the caveat explicit: this is not a universal claim about all ML or all web traffic. It is a result on this benchmark and split.
+}
+\end{frame}
+
+% --- Slide 11 ---
+\begin{frame}{The rule detector makes very few benign mistakes}
+    \begin{center}
+        \visible<1->{\Large \textbf{4 false positives on the held-out test split}}
+    \end{center}
+    \vspace{0.15cm}
+    \begin{center}
+    \visible<2->{
+    \renewcommand{\arraystretch}{1.35}
+    \begin{tabular}{@{} l r r @{}}
+        \toprule
+        & \textbf{Predicted normal} & \textbf{Predicted attack} \\
+        \midrule
+        Actual normal & 7{,}196 & 4 \\
+        Actual attack & 92 & 4{,}921 \\
+        \bottomrule
+    \end{tabular}
+    }
+    \end{center}
+    \vspace{0.2cm}
+    \begin{itemize}
+        \item<2-> Most remaining errors are false negatives rather than false positives.
+        \item<3-> This matters for rule deployment, where noisy rules are hard to keep enabled.
+    \end{itemize}
+\note{
+Timing: 40 seconds.
+
+Bring back the confusion matrix from the paper as part of the ML comparison section. The important point is not just high accuracy. It is that the rule set is very conservative on benign traffic, with only 4 false positives.
+}
+\end{frame}
+
+% --- Slide 12 ---
+\begin{frame}{Runtime comparison: rules remove the heavy pipeline}
+    \begin{center}
+    \begin{tikzpicture}
+    \begin{axis}[
+        ybar,
+        bar width=18pt,
+        width=0.82\textwidth,
+        height=0.52\textheight,
+        ymin=0,
+        ymax=70,
+        ylabel={Seconds},
+        symbolic x coords={ML wall,ML script,Rules},
+        xmin=ML wall,
+        xmax=Rules,
+        xtick={ML wall,ML script,Rules},
+        enlarge x limits=0.18,
+        nodes near coords,
+        nodes near coords align={vertical},
+        every node near coord/.append style={font=\scriptsize},
+        grid=major,
+        grid style={gray!20}
+    ]
+    \only<1->{\addplot[fill=red!25, draw=red!60!black] coordinates {(ML wall,63.52)};}
+    \only<2->{\addplot[fill=orange!35, draw=orange!80!black] coordinates {(ML script,30.42)};}
+    \only<3->{\addplot[fill=green!35, draw=green!50!black] coordinates {(Rules,2.78)};}
+    \end{axis}
+    \end{tikzpicture}
+    \end{center}
+    \begin{overlayarea}{0.96\textwidth}{1.45cm}
+    \begin{itemize}
+        \item<1-> The wall-clock ML run takes 63.52 seconds for the local pipeline.
+        \item<2-> The reproduced ML script timer takes 30.42 seconds for feature extraction, training, and evaluation.
+        \item<3-> The frozen rule harness evaluates all 61{,}065 requests in 2.78 seconds.
+    \end{itemize}
+    \end{overlayarea}
+\note{
+Timing: 50 seconds.
+
+Explain carefully that the runtime comparison is not pure model inference. The random forest timing includes the local notebook pipeline. Still, this slide shows why a frozen rule set is appealing for deployment: no model call, no training path, and cheap deterministic evaluation.
+}
+\end{frame}
+
+% --- Slide 13 ---
+\begin{frame}{Limitations and next steps}
+    \begin{itemize}
+        \item<1-> \textbf{Discovery provenance:} rules were developed after earlier inspection of the dataset.
+        \vspace{0.25cm}
+        \item<2-> \textbf{Dataset scope:} CSIC 2010 is one synthetic application with repeated endpoint structure.
+        \vspace{0.25cm}
+        \item<3-> \textbf{Runtime comparison:} the ML baseline timing is a local pipeline cost, not trained-model inference only.
+        \vspace{0.25cm}
+        \item<4-> \textbf{Next step:} freeze the train/test split first, then rerun the agent loop using only training examples and dev errors.
+        \vspace{0.25cm}
+        \item<5-> \textbf{Longer term:} test whether the same method works across more web-attack datasets.
+    \end{itemize}
+\note{
+Timing: 55 seconds.
+
+Be candid here. The strongest limitation is that the rule families were developed through earlier dataset inspection, even though the final evaluation uses a held-out 20 percent split. The clean next experiment is to freeze the split before any rule discovery, let the agent see only training or development data, and then report once on the test set. Also mention that CSIC is synthetic and structured.
+}
+\end{frame}
+
+% --- Slide 12 ---
+\begin{frame}{LLMs can help write rules without becoming detectors}
+    \begin{center}
+    \begin{tikzpicture}[node distance=0.85cm, thick, >=Stealth]
+        \node<1->[draw, rounded corners, fill=blue!10, minimum width=3.5cm, minimum height=0.75cm] (llm) {LLM proposes};
+        \node<2->[draw, rounded corners, fill=green!12, minimum width=3.5cm, minimum height=0.75cm, right=of llm] (eval) {Harness verifies};
+        \node<3->[draw, rounded corners, fill=orange!12, minimum width=3.5cm, minimum height=0.75cm, right=of eval] (rules) {Rules deploy};
+        \draw<2->[->] (llm) -- (eval);
+        \draw<3->[->] (eval) -- (rules);
+    \end{tikzpicture}
+    \end{center}
+    \vspace{0.55cm}
+    \begin{itemize}
+        \item<1-> Use the LLM for offline search, not runtime classification.
+        \item<2-> Keep only rules that survive deterministic evaluation.
+        \item<3-> Report on held-out data and inspect the remaining errors.
+        \item<4-> The result is fast, auditable detection logic for a structured benchmark.
+    \end{itemize}
+\note{
+Timing: 35 seconds.
+
+End with the clean takeaway. The LLM is useful because it helps search the rule space, but the harness is what makes the system reliable. The final detector is deterministic and inspectable. That is the contribution of the project.
+}
+\end{frame}
+
+\begin{frame}{Summary}
+    \begin{itemize}
+        \item LLMs can help discover web-attack rules without serving as runtime detectors.
+        \item The final detector is a compact deterministic rule set over request text and endpoint fields.
+        \item On the held-out 20\% split, the rule set reaches 99.21\% accuracy and 0.9903 F1.
+        \item The rule harness evaluates all 61{,}065 requests in 2.78 seconds.
+        \item Compared with the reproduced ML baseline, the rules are faster, more inspectable, and easier to adapt into firewall-style logic.
+    \end{itemize}
+    \vfill
+    \begin{center}
+        {\Huge \textbf{Q \& A}}
+    \end{center}
+\note{
+Timing: open-ended.
+
+Use this as the final landing slide. Re-state the main result in one sentence, then leave the Q and A visible while taking questions.
+}
+\end{frame}
+
+\end{document}

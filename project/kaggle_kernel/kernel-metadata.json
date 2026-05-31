@@ -1,0 +1,23 @@
+{
+  "id": "mustafa818/notebook25d16fa6ba",
+  "id_no": 118197323,
+  "title": "notebook25d16fa6ba",
+  "code_file": "notebook25d16fa6ba.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [],
+  "dataset_sources": [
+    "ispangler/csic-2010-web-application-attacks"
+  ],
+  "kernel_sources": [
+    "monicamedhat12/csic-2010-web-application-attacks-classifier"
+  ],
+  "competition_sources": [],
+  "model_sources": [],
+  "docker_image": "gcr.io/kaggle-images/python@sha256:c370a5ff133d162d17c2dca332b50f3e85c0b0ed1471ee18e98e3009eee80b08",
+  "machine_shape": "None"
+}
