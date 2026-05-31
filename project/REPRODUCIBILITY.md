@@ -8,8 +8,7 @@ This directory contains the data and scripts needed to reproduce the main result
 - `regex_rules/evaluate_rules.py`: deterministic rule definitions, request parser, metrics helpers, and full-dataset rule evaluation utilities.
 - `regex_rules/evaluate_split.py`: stratified 80/20 train/test evaluation for the rule-discovery rounds reported in the paper.
 - `regex_rules/agent_rule_harness.py`: an agent-loop implementation that asks an LLM to choose candidate rule groups from a safe catalog, evaluates each candidate deterministically, and accepts only metric-improving candidates.
-- `kaggle_kernel/notebook25d16fa6ba.ipynb`: pulled Kaggle notebook for the CSIC 2010 machine-learning baseline.
-- `kaggle_kernel/notebook25d16fa6ba.py`: notebook converted to Python.
+- `kaggle_kernel/notebook25d16fa6ba.py`: pulled Kaggle notebook converted to Python for the CSIC 2010 machine-learning baseline.
 - `kaggle_kernel/run_notebook25d16fa6ba_local.py`: local runner that reproduces the random-forest baseline with the same dataset copy.
 - `experiment_log.md`: historical notes from dataset inspection, rule iteration, runtime measurement, and notebook reproduction.
 
