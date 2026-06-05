@@ -3,7 +3,7 @@
 ## Paper
 
 *"LLM-Guided Rule Discovery for Web Attack Detection,"* submitted to ECE239AS
-Network Security.
+Network Security (June 2026).
 
 **PDF:** [`./paper_final.pdf`](paper_final.pdf)
 
