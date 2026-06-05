@@ -95,7 +95,7 @@ Our harness treats the LLM as an offline proposal mechanism rather than as the d
 
 \section{Methodology}
 
-Our methodology separates rule discovery from rule execution. The LLM is used only during an offline search loop, where it proposes candidate regexes and endpoint heuristics from examples and error summaries. A deterministic harness then executes those candidates, measures their effect on classification behavior, and decides whether to retain them. The final detector is therefore not an LLM classifier. It is a fixed rule set that can be run, inspected, and revised without calling a model.
+Our methodology separates rule discovery from rule execution. As shown in Figure~\ref{fig:method-loop}, the LLM is used only during an offline search loop, where it proposes candidate regexes and endpoint heuristics from examples and error summaries. A deterministic harness then executes those candidates, measures their effect on classification behavior, and decides whether to retain them. The final detector is therefore not an LLM classifier. It is a fixed rule set that can be run, inspected, and revised without calling a model.
 
 \begin{figure}[t]
 \centering
@@ -230,6 +230,8 @@ We also package the discovery process as an executable agent loop. The script pr
 
 \section{Dataset and Experimental Setup}
 
+We evaluate rule discovery under a fixed split and a shared request representation. The local CSIC 2010 copy provides the labeled HTTP requests, while the harness exposes raw, decoded, and parsed fields from each row. We use the same stratified 80/20 split for the rule detector and the reproduced machine-learning baseline. This setup keeps differences in performance attributable to the detector design rather than to different data, preprocessing, or test partitions.
+
 \subsection{Dataset}
 
 We evaluate on the CSIC 2010 web-application attack dataset. The dataset contains HTTP requests for a synthetic online store, with each row labeled as either normal or anomalous. In the local CSV, the binary target appears both as a string label and as the numeric \texttt{classification} field, where 0 denotes normal traffic and 1 denotes anomalous traffic. Table~\ref{tab:dataset-summary} summarizes the local copy used in our experiments. The dataset is moderately imbalanced, but both classes are large enough to support the stratified 80/20 train/test split used in our comparison.
@@ -260,7 +262,7 @@ The CSV structure determines how requests are represented before rule evaluation
 
 We compare the rule harness against a reproduced machine-learning baseline from a public Kaggle notebook for the same dataset. The baseline builds 18 numeric features from URL, body, method, and content-length properties, and it also constructs a character TF-IDF representation of the combined URL and body text. For the binary task, it trains a random forest on the numeric features plus 3{,}000 TF-IDF features. The notebook uses an 80/20 stratified train/test split with random seed 42, yielding 48{,}852 training requests and 12{,}213 test requests. We run this baseline locally with \texttt{uv} so that the comparison reflects the same dataset copy and machine environment.
 
-The rule-based detector is evaluated separately from the machine-learning baseline. It parses each request into raw and decoded fields, compiles a fixed set of Python regexes, and applies both regex rules and deterministic endpoint heuristics. The final rule set contains 22 regex rules and 12 callback heuristics. We evaluate these frozen rules on the same stratified 80/20 split as the random-forest baseline, using random seed 42. The rule families were developed through iterative error analysis before this split-based reporting pass, so the result should be read as a held-out evaluation of a fixed detector rather than as a fully automated train-only discovery study.
+The rule-based detector is evaluated separately from the machine-learning baseline. It parses each request into raw and decoded fields, compiles a fixed set of Python regexes, and applies both regex rules and deterministic endpoint heuristics. The final rule set contains 22 regex rules and 12 callback heuristics. We evaluate these frozen rules on the same stratified 80/20 split as the random-forest baseline, using random seed 42; Table~\ref{tab:experimental-configs} summarizes the two detector configurations. The rule families were developed through iterative error analysis before this split-based reporting pass, so the result should be read as a held-out evaluation of a fixed detector rather than as a fully automated train-only discovery study.
 
 \begin{table}[t]
 \centering
@@ -289,6 +291,8 @@ The rule harness is implemented as a small Python program. It loads the CSV with
 The machine-learning baseline is implemented in the local notebook runner. It uses Pandas and scikit-learn to extract features, construct TF-IDF vectors, train the random forest, and save plots and model artifacts. We measure its script-level runtime from inside the runner and also record shell wall-clock time. These two runtimes answer different questions: the script timer captures the notebook pipeline after startup, while wall-clock time captures the cost of launching the full local run through \texttt{uv}. For the rule harness, the relevant deployment number is the time to parse requests and apply the frozen detector, since no LLM calls occur at inference time.
 
 \section{Results}
+
+The frozen rule set recovers nearly all of the benchmark structure while remaining compact and fast. We first report its held-out classification performance, then compare it with the reproduced machine-learning baseline on the same split. We then separate runtime from accuracy so that deployment cost is not conflated with discovery-time LLM use. Finally, we examine the remaining errors to show which attack patterns are still difficult for simple rules.
 
 \subsection{Rule-Set Performance}
 
@@ -400,11 +404,11 @@ Regex harness & 20\% test & 0.9921 & 0.9903 \\
 \label{tab:model-comparison}
 \end{table}
 
-The reproduced baseline also shows that feature choice matters. Numeric-only models perform substantially worse than the TF-IDF random forest, with the numeric-only random forest reaching 0.8931 accuracy and 0.8691 F1. Gradient boosting and logistic regression over the same numeric features perform lower still. This reinforces the same observation that motivates the rule harness: most of the useful evidence is in request text and request structure, not in coarse scalar summaries alone.
+The reproduced baseline also shows that feature choice matters. Numeric-only models perform substantially worse than the TF-IDF random forest, with the numeric-only random forest reaching 0.8931 accuracy and 0.8691 F1. Gradient boosting and logistic regression over the same numeric features perform lower still. This reinforces the same observation that motivates the rule harness: most of the useful evidence is in request text and request structure, not in coarse scalar summaries alone. Table~\ref{tab:rule-iterations} shows the same pattern within the rule harness, where endpoint-aware rule groups produce the largest gains over seed signatures.
 
 \subsection{Runtime}
 
-The regex detector has a much smaller local pipeline cost than the reproduced machine-learning baseline. Applying the final rule set to all 61{,}065 requests took about 1.92 seconds after request construction, and the full load-parse-evaluate run took about 2.78 seconds. This corresponds to roughly 21{,}963 requests per second end to end on the local machine. The reproduced notebook reported 32.97 seconds of script runtime and 63.52 seconds of earlier shell wall-clock time for feature extraction, training, evaluation, and plot generation. These numbers are not identical deployment workloads, but they show the practical difference between a compiled rule set and a full model-training notebook pipeline.
+The regex detector has a much smaller local pipeline cost than the reproduced machine-learning baseline. Applying the final rule set to all 61{,}065 requests took about 1.92 seconds after request construction, and the full load-parse-evaluate run took about 2.78 seconds. This corresponds to roughly 21{,}963 requests per second end to end on the local machine. The reproduced notebook reported 29.87 seconds of script runtime and 63.52 seconds of earlier shell wall-clock time for feature extraction, training, evaluation, and plot generation, as summarized in Table~\ref{tab:runtime}. These numbers are not identical deployment workloads, but they show the practical difference between a compiled rule set and a full model-training notebook pipeline.
 
 \begin{table}[t]
 \centering
@@ -413,7 +417,7 @@ The regex detector has a much smaller local pipeline cost than the reproduced ma
 Pipeline & Time \\
 \midrule
 Regex harness & 2.78 s \\
-Reproduced ML baseline & 32.97 s \\
+Reproduced ML baseline & 29.87 s \\
 Reproduced ML baseline wall clock & 63.52 s \\
 \bottomrule
 \end{tabular}
@@ -449,9 +453,7 @@ The runtime comparison is only a coarse comparison of local pipelines. The rule-
 
 \section{Conclusion}
 
-This paper studies whether an LLM can help discover web-attack detection rules without becoming the detector. We built a harness that uses the LLM only to propose regexes and endpoint heuristics, then relies on deterministic evaluation to decide which rules to retain. On the same stratified 80/20 split used by the reproduced random-forest baseline, the frozen rule set reached high held-out accuracy and ran over the full dataset in seconds. The result suggests that much of the benchmark's structure can be captured by auditable rules when generic attack signatures are combined with endpoint-specific invariants.
-
-The broader takeaway is that LLMs may be useful in the rule-writing workflow even when they are unsuitable for the runtime detection path. A model can help search the space of candidate rules, but precision, recall, and rule acceptance should be enforced by a deterministic harness. This design preserves the benefits of simple rule engines: fast execution, stable behavior, and inspectable decisions. The next step is to run the discovery loop from scratch after freezing the split and to repeat the study across additional web-attack datasets.
+LLMs can help write detection rules without becoming the detector. This paper built a harness that uses an LLM to propose regexes and endpoint heuristics, then relies on deterministic evaluation to decide which rules to retain. On the same stratified 80/20 split used by the reproduced random-forest baseline, the frozen rule set reached high held-out accuracy and ran over the full dataset in seconds. The result suggests that much of CSIC 2010's structure can be captured by auditable rules when generic attack signatures are combined with endpoint-specific invariants. More broadly, the study points to a practical division of labor: use models to search the rule space offline, but enforce precision, recall, and deployment behavior through a compact deterministic harness. Future work should freeze the split before discovery begins and repeat the study across additional web-attack datasets.
 
 \section*{Ethics}
 

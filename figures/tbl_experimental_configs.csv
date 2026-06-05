@@ -1,0 +1,3 @@
+Detector,Configuration
+Random forest,18 numeric + char TF-IDF; 80/20 test
+Regex harness,decoded fields + callbacks; 80/20 test

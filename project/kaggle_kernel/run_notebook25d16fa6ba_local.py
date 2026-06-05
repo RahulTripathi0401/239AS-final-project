@@ -196,12 +196,30 @@ def main() -> None:
 
     print("\n=== Binary Classification Report ===")
     print(classification_report(yb_test, yb_pred, target_names=["Normal", "Attack"]))
-    print(f"Accuracy : {accuracy_score(yb_test, yb_pred):.4f}")
-    print(f"F1 Score : {f1_score(yb_test, yb_pred):.4f}")
-    print(f"ROC-AUC  : {roc_auc_score(yb_test, yb_prob):.4f}")
+    binary_accuracy = accuracy_score(yb_test, yb_pred)
+    binary_f1 = f1_score(yb_test, yb_pred)
+    binary_roc_auc = roc_auc_score(yb_test, yb_prob)
+    print(f"Accuracy : {binary_accuracy:.4f}")
+    print(f"F1 Score : {binary_f1:.4f}")
+    print(f"ROC-AUC  : {binary_roc_auc:.4f}")
 
     fig, ax = plt.subplots(figsize=(6, 5))
     cm = confusion_matrix(yb_test, yb_pred)
+    pd.DataFrame(
+        [
+            {
+                "model": "Random forest",
+                "split": "20% test",
+                "accuracy": binary_accuracy,
+                "f1": binary_f1,
+                "roc_auc": binary_roc_auc,
+                "tn": int(cm[0, 0]),
+                "fp": int(cm[0, 1]),
+                "fn": int(cm[1, 0]),
+                "tp": int(cm[1, 1]),
+            }
+        ]
+    ).to_csv(OUTPUT_DIR / "binary_metrics.csv", index=False)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Normal", "Attack"])
     disp.plot(ax=ax, colorbar=False, cmap="Blues")
     ax.set_title("Binary Classification Confusion Matrix")
@@ -296,6 +314,7 @@ def main() -> None:
         print(f"{name}: Accuracy={results[-1]['Accuracy']} | F1={results[-1]['F1']}")
 
     results_df = pd.DataFrame(results)
+    results_df.to_csv(OUTPUT_DIR / "numeric_model_comparison.csv", index=False)
     x = np.arange(len(results_df))
     w = 0.35
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -313,8 +332,12 @@ def main() -> None:
     joblib.dump(tfidf, OUTPUT_DIR / "tfidf_vectorizer.pkl")
     joblib.dump(le, OUTPUT_DIR / "label_encoder.pkl")
 
+    total_runtime = time.perf_counter() - t0
+    pd.DataFrame(
+        [{"pipeline": "Reproduced ML baseline", "runtime_seconds": total_runtime}]
+    ).to_csv(OUTPUT_DIR / "runtime_summary.csv", index=False)
     print(f"\nModels and plots saved to {OUTPUT_DIR}")
-    print(f"Total runtime seconds: {time.perf_counter() - t0:.2f}")
+    print(f"Total runtime seconds: {total_runtime:.2f}")
 
 
 if __name__ == "__main__":

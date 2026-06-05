@@ -1,0 +1,4 @@
+Pipeline,Time
+Regex harness,2.78 s
+Reproduced ML baseline,29.87 s
+Reproduced ML baseline wall clock,63.52 s

@@ -1,0 +1,9 @@
+Property,Count
+Total requests,61065
+Normal requests,36000
+Anomalous requests,25065
+GET requests,43088
+POST requests,17580
+PUT requests,397
+Rows with non-empty URL,61065
+Rows with non-empty body,17977

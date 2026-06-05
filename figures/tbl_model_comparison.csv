@@ -1,0 +1,3 @@
+Detector,Eval.,Acc.,F1
+Random forest,20% test,0.9763,0.9712
+Regex harness,20% test,0.9921,0.9903

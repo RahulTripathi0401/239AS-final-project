@@ -1,0 +1,2 @@
+model,split,accuracy,f1,roc_auc,tn,fp,fn,tp
+Random forest,20% test,0.9763366904118562,0.9712351945854484,0.997255635348095,7045,155,134,4879

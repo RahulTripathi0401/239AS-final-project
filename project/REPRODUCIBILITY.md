@@ -110,7 +110,7 @@ F1 Score : 0.9712
 ROC-AUC  : 0.9973
 ```
 
-The local script timer reported about 32.97 seconds in the checked run, while an earlier shell wall-clock runtime through `uv` was about 63.52 seconds. Exact timing will vary by machine.
+The local script timer reported about 29.87 seconds in the checked run, while an earlier shell wall-clock runtime through `uv` was about 63.52 seconds. Exact timing will vary by machine.
 
 ## Rebuild the Paper
 
